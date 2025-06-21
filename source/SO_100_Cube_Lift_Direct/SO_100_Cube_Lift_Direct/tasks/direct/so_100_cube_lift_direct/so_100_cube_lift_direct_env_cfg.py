@@ -41,7 +41,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     )
 
     # robot(s)
-    robot_cfg: ArticulationCfg = SO100_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot_cfg: ArticulationCfg = SO100_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=32, env_spacing=2.5, replicate_physics=True)
@@ -51,7 +51,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     
     # Object configuration
     object_cfg: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Object",
+        prim_path="/World/envs/env_.*/Object",
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=(0.2, 0.0, 0.015), 
             rot=(1.0, 0.0, 0.0, 0.0)
@@ -72,7 +72,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
 
     # Camera configuration
     camera_cfg: CameraCfg = CameraCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/Wrist_Pitch_Roll/Gripper_Camera/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
+        prim_path="/World/envs/env_.*/Robot/Wrist_Pitch_Roll/Gripper_Camera/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
         update_period=0.1,
         height=144,
         width=256,
@@ -93,7 +93,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     marker_cfg.prim_path = "/Visuals/FrameTransformer"
 
     ee_frame_cfg = FrameTransformerCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/Base",
+            prim_path="/World/envs/env_.*/Robot/Base",
             visualizer_cfg=marker_cfg,
             debug_vis=False,  # disable visualization
             target_frames=[
@@ -101,7 +101,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
                     # Original path in comments for reference
                     # prim_path="{ENV_REGEX_NS}/Robot/SO_100/SO_5DOF_ARM100_05d_SLDASM/Fixed_Gripper",
                     # Updated path for the new USD structure
-                    prim_path="{ENV_REGEX_NS}/Robot/Fixed_Gripper",
+                    prim_path="/World/envs/env_.*/Robot/Fixed_Gripper",
                     name="end_effector",
                     offset=OffsetCfg(
                         pos=(0.01, -0.0, 0.1),

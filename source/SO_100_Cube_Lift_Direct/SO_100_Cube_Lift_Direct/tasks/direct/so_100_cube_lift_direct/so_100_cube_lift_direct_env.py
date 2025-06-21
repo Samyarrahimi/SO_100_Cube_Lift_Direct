@@ -157,7 +157,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             scale=(1.0, 1.0, 1.0),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True),
         )
-        table_cfg.func("{ENV_REGEX_NS}/Table", table_cfg)
+        table_cfg.func("/World/envs/env_.*/Table", table_cfg)
         
         # Clone environments
         self.scene.clone_environments(copy_from_source=False)
