@@ -2,14 +2,21 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
+import copy
 
-from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
-
-from isaaclab.assets import ArticulationCfg
+import isaaclab.sim as sim_utils
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import CameraCfg, FrameTransformerCfg
 from isaaclab.sim import SimulationCfg
+from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.markers.config import FRAME_MARKER_CFG
+from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
+
+from .so_100_robot_cfg import SO100_CFG
 
 
 @configclass
@@ -18,31 +25,103 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     decimation = 2
     episode_length_s = 5.0
     # - spaces definition
-    action_space = 1
-    observation_space = 4
+    action_space = 6
+    observation_space = 0
     state_space = 0
 
-    # simulation
-    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
+    sim: SimulationCfg = SimulationCfg(
+        dt=0.01,  # 100Hz
+        render_interval=decimation,
+        physx=sim_utils.PhysxCfg(
+            bounce_threshold_velocity=0.2,
+            gpu_found_lost_aggregate_pairs_capacity=1024 * 1024 * 4,
+            gpu_total_aggregate_pairs_capacity=16 * 1024,
+            friction_correlation_distance=0.00625,
+        )
+    )
 
     # robot(s)
-    robot_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = SO100_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=32, env_spacing=2.5, replicate_physics=True)
 
-    # custom parameters/scales
-    # - controllable joint
-    cart_dof_name = "slider_to_cart"
-    pole_dof_name = "cart_to_pole"
-    # - action scale
-    action_scale = 100.0  # [N]
-    # - reward scales
-    rew_scale_alive = 1.0
-    rew_scale_terminated = -2.0
-    rew_scale_pole_pos = -1.0
-    rew_scale_cart_vel = -0.01
-    rew_scale_pole_vel = -0.005
-    # - reset states/conditions
-    initial_pole_angle_range = [-0.25, 0.25]  # pole angle sample range on reset [rad]
-    max_cart_pos = 3.0  # reset if cart exceeds this position [m]
+    # Joint names for action mapping
+    dof_names = ["Shoulder_Rotation", "Shoulder_Pitch", "Elbow", "Wrist_Pitch", "Wrist_Roll", "Gripper"]
+    
+    # Object configuration
+    object_cfg: RigidObjectCfg = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Object",
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.2, 0.0, 0.015), 
+            rot=(1.0, 0.0, 0.0, 0.0)
+        ),
+        spawn=UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Blocks/DexCube/dex_cube_instanceable.usd",
+            scale=(0.3, 0.3, 0.3),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                solver_position_iteration_count=16,
+                solver_velocity_iteration_count=1,
+                max_angular_velocity=1000.0,
+                max_linear_velocity=1000.0,
+                max_depenetration_velocity=5.0,
+                disable_gravity=False,
+            ),
+        ),
+    )
+
+    # Camera configuration
+    camera_cfg: CameraCfg = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/Wrist_Pitch_Roll/Gripper_Camera/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
+        update_period=0.1,
+        height=144,
+        width=256,
+        data_types=["rgb"],
+        offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(180.0, 0.0, 0.0, 0.0), convention="ros"),
+        spawn=None
+    )
+
+    # Configure end-effector marker
+    marker_cfg = copy.deepcopy(FRAME_MARKER_CFG)
+    # Properly replace the frame marker configuration
+    marker_cfg.markers = {
+        "frame": sim_utils.UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/frame_prim.usd",
+            scale=(0.05, 0.05, 0.05),
+        )
+    }
+    marker_cfg.prim_path = "/Visuals/FrameTransformer"
+
+    ee_frame_cfg = FrameTransformerCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/Base",
+            visualizer_cfg=marker_cfg,
+            debug_vis=False,  # disable visualization
+            target_frames=[
+                FrameTransformerCfg.FrameCfg(
+                    # Original path in comments for reference
+                    # prim_path="{ENV_REGEX_NS}/Robot/SO_100/SO_5DOF_ARM100_05d_SLDASM/Fixed_Gripper",
+                    # Updated path for the new USD structure
+                    prim_path="{ENV_REGEX_NS}/Robot/Fixed_Gripper",
+                    name="end_effector",
+                    offset=OffsetCfg(
+                        pos=(0.01, -0.0, 0.1),
+                    ),
+                ),
+            ],
+        )
+    
+    # Target pose ranges for the object
+    target_pos_x_range = (0.4, 0.6)
+    target_pos_y_range = (-0.25, 0.25)
+    target_pos_z_range = (0.25, 0.5)
+    
+    # Reward parameters
+    reaching_reward_std = 0.1
+    lifting_min_height = 0.04
+    goal_tracking_std = 0.3
+    goal_tracking_fine_std = 0.05
+    action_penalty_weight = -1e-4
+    joint_vel_penalty_weight = -1e-4
+    
+    # Termination parameters
+    object_drop_height = -0.05
