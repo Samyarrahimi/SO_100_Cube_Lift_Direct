@@ -151,14 +151,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         
-        # Add table (only here, not in config)
-        table_cfg = sim_utils.UsdFileCfg(
-            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
-            scale=(1.0, 1.0, 1.0),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True),
-        )
-        table_cfg.func("/World/envs/env_.*/Table", table_cfg)
-        
         # Clone environments
         self.scene.clone_environments(copy_from_source=False)
         
