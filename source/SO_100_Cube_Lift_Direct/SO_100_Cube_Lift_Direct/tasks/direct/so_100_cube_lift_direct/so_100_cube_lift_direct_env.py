@@ -5,10 +5,10 @@
 
 from __future__ import annotations
 
-import math
 import torch
 from collections.abc import Sequence
 import numpy as np
+import torchvision.models as models
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, RigidObject
@@ -18,12 +18,6 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import sample_uniform, combine_frame_transforms, subtract_frame_transforms
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-# Import ResNet for camera feature extraction
-try:
-    import torchvision.models as models
-except ImportError:
-    print("Warning: torchvision not available, camera features will be disabled")
-    models = None
 
 from .so_100_cube_lift_direct_env_cfg import So100CubeLiftDirectEnvCfg
 
@@ -86,58 +80,40 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Calculate camera features dimension dynamically
         self.camera_features_dim = self._get_camera_features_dimension()
 
-    # def _compute_observation_space_size(self):
-    #     """Compute the actual observation space size dynamically."""
-    #     # Define observation components and their dimensions
-    #     observation_components = {
-    #         "joint_pos_rel": 6,        # Relative joint positions
-    #         "joint_vel": 6,            # Joint velocities  
-    #         "object_pos_b": 3,         # Object position in robot frame
-    #         "target_pos_b": 3,         # Target position in robot frame
-    #         "ee_pos": 3,               # End-effector position
-    #         "current_actions": 6,      # Current actions (cloned)
-    #         "camera_features": self.camera_features_dim,  # Dynamic camera features
-    #     }
-    #     # Calculate total observation size
-    #     total_obs_size = sum(observation_components.values())
-        
-    #     # Update config
-    #     self.cfg.observation_space = total_obs_size
-
     def _get_camera_features(self) -> np.ndarray:
         """Extract ResNet18 features from camera RGB images."""
-        try:
-            # Get camera data
-            camera_data = self.camera.data.output
-            
-            if camera_data is None or "rgb" not in camera_data:
-                # Return zero features if camera data is not available
-                return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device).cpu().numpy()
-            
-            rgb_images = camera_data["rgb"]  # Shape: [num_envs, height, width, 3]
-            
-            # Process images for ResNet
-            features = torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
-            
-            for i in range(self.num_envs):
-                # Convert to tensor and normalize
-                img = torch.from_numpy(rgb_images[i]).float() / 255.0
-                img = img.permute(2, 0, 1)  # HWC to CHW
-                
-                img = torch.unsqueeze(img, 0)  # Add batch dimension
-                
-                # Extract features
-                with torch.no_grad():
-                    feature = self.resnet_model(img)
-                    # Flatten the feature tensor
-                    feature_flat = feature.view(feature.size(0), -1)
-                    features[i] = feature_flat.squeeze()
-            
-            return features.cpu().numpy()
-        except Exception as e:
-            print(f"Error extracting camera features: {e}")
-            # Return zero features on error
+        # try:
+        # Get camera data
+        camera_data = self.camera.data.output
+        
+        if camera_data is None or "rgb" not in camera_data:
+            # Return zero features if camera data is not available
             return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device).cpu().numpy()
+        
+        rgb_images = camera_data["rgb"]  # Shape: [num_envs, height, width, 3]
+        
+        # Process images for ResNet
+        features = torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
+        
+        for i in range(self.num_envs):
+            # Convert to tensor and normalize
+            img = torch.from_numpy(rgb_images[i]).float() / 255.0
+            img = img.permute(2, 0, 1)  # HWC to CHW
+            
+            img = torch.unsqueeze(img, 0)  # Add batch dimension
+            
+            # Extract features
+            with torch.no_grad():
+                feature = self.resnet_model(img)
+                # Flatten the feature tensor
+                feature_flat = feature.view(feature.size(0), -1)
+                features[i] = feature_flat.squeeze()
+        
+        return features.cpu().numpy()
+        # except Exception as e:
+        #     print(f"Error extracting camera features: {e}")
+        #     # Return zero features on error
+        #     return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device).cpu().numpy()
 
     def _setup_scene(self):
         """Set up the simulation scene."""
@@ -157,17 +133,13 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         )
 
         self.ee_frame = FrameTransformer(self.cfg.ee_frame_cfg)
-        
         # Add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
-        
         # Clone environments
         self.scene.clone_environments(copy_from_source=False)
-        
         # Add articulations to scene
         self.scene.articulations["robot"] = self.robot
         self.scene.rigid_objects["object"] = self.object
-        
         # Add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
@@ -177,11 +149,9 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Get the end effector position from the frame transformer
         # This is the proper way to get end effector position in IsaacLab
         ee_pos_w = self.ee_frame.data.target_pos_w[..., 0, :]  # Shape: [num_envs, 3]
-        
         # Get robot root position and orientation
         robot_root_pos = self.robot.data.root_state_w[:, :3]
         robot_root_quat = self.robot.data.root_state_w[:, 3:7]
-        
         # Convert to robot body frame for consistency with other observations
         ee_pos_b, _ = subtract_frame_transforms(
             robot_root_pos, 
@@ -227,16 +197,13 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             self.robot.data.root_state_w[:, 3:7], 
             target_pos
         )
-        
         # End-effector position (approximate using forward kinematics)
         ee_pos = self._get_end_effector_position()
 
         # Get camera RGB features
-        camera_features_np = self._get_camera_features()
-        camera_features = torch.from_numpy(camera_features_np).to(self.device)
+        camera_features = self._get_camera_features()
 
         self.last_actions = self.actions.clone()
-        
         # Concatenate all observations
         states = torch.cat([
             joint_pos_rel,      # 6 dims
@@ -245,9 +212,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             target_pos_b,       # 3 dims
             ee_pos,             # 3 dims
             self.last_actions,  # 6 dims
-            camera_features
+            torch.from_numpy(camera_features)
         ], dim=-1)
-        
         observations = {
             "policy": states
         }
