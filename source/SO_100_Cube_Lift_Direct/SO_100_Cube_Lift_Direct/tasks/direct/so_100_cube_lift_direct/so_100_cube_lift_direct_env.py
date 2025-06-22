@@ -234,7 +234,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.last_actions = self.actions.clone()
         
         # Concatenate all observations
-        obs = torch.cat([
+        states = torch.cat([
             joint_pos_rel,      # 6 dims
             joint_vel,          # 6 dims
             object_pos_b,       # 3 dims
@@ -244,7 +244,9 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             camera_features
         ], dim=-1)
         
-        observations = {"policy": obs}
+        observations = {
+            "policy": states
+        }
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
