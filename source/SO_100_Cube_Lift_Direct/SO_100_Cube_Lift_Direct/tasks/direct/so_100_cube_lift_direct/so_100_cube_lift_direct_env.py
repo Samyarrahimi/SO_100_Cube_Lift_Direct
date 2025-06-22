@@ -45,9 +45,9 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Initialize camera and ResNet model
         self._setup_camera_and_model()
         
-        # Initialize observation space size
-        self._compute_observation_space_size()
-        self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
+        # # Initialize observation space size
+        # self._compute_observation_space_size()
+        # self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
 
         self.joint_pos = self.robot.data.joint_pos
         self.joint_vel = self.robot.data.joint_vel
@@ -85,23 +85,23 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Calculate camera features dimension dynamically
         self.camera_features_dim = self._get_camera_features_dimension()
 
-    def _compute_observation_space_size(self):
-        """Compute the actual observation space size dynamically."""
-        # Define observation components and their dimensions
-        observation_components = {
-            "joint_pos_rel": 6,        # Relative joint positions
-            "joint_vel": 6,            # Joint velocities  
-            "object_pos_b": 3,         # Object position in robot frame
-            "target_pos_b": 3,         # Target position in robot frame
-            "ee_pos": 3,               # End-effector position
-            "current_actions": 6,      # Current actions (cloned)
-            "camera_features": self.camera_features_dim,  # Dynamic camera features
-        }
-        # Calculate total observation size
-        total_obs_size = sum(observation_components.values())
+    # def _compute_observation_space_size(self):
+    #     """Compute the actual observation space size dynamically."""
+    #     # Define observation components and their dimensions
+    #     observation_components = {
+    #         "joint_pos_rel": 6,        # Relative joint positions
+    #         "joint_vel": 6,            # Joint velocities  
+    #         "object_pos_b": 3,         # Object position in robot frame
+    #         "target_pos_b": 3,         # Target position in robot frame
+    #         "ee_pos": 3,               # End-effector position
+    #         "current_actions": 6,      # Current actions (cloned)
+    #         "camera_features": self.camera_features_dim,  # Dynamic camera features
+    #     }
+    #     # Calculate total observation size
+    #     total_obs_size = sum(observation_components.values())
         
-        # Update config
-        self.cfg.observation_space = total_obs_size
+    #     # Update config
+    #     self.cfg.observation_space = total_obs_size
 
     def _get_camera_features(self) -> torch.Tensor:
         """Extract ResNet18 features from camera RGB images."""
