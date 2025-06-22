@@ -146,6 +146,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Create object
         self.object = RigidObject(self.cfg.object_cfg)
 
+        self.camera = Camera(self.cfg.camera_cfg)
+
         table_cfg = self.cfg.table_cfg
         table_cfg.spawn.func(
             table_cfg.prim_path, table_cfg.spawn, 
