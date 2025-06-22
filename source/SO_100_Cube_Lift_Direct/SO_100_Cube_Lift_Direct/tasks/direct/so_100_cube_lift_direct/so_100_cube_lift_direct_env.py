@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import torch
 from collections.abc import Sequence
+import numpy as np
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, RigidObject
@@ -103,7 +104,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
     #     # Update config
     #     self.cfg.observation_space = total_obs_size
 
-    def _get_camera_features(self) -> torch.Tensor:
+    def _get_camera_features(self) -> np.ndarray:
         """Extract ResNet18 features from camera RGB images."""
         try:
             # Get camera data
@@ -111,7 +112,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             
             if camera_data is None or "rgb" not in camera_data:
                 # Return zero features if camera data is not available
-                return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
+                return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device).cpu().numpy()
             
             rgb_images = camera_data["rgb"]  # Shape: [num_envs, height, width, 3]
             
@@ -132,11 +133,11 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
                     feature_flat = feature.view(feature.size(0), -1)
                     features[i] = feature_flat.squeeze()
             
-            return features
+            return features.cpu().numpy()
         except Exception as e:
             print(f"Error extracting camera features: {e}")
             # Return zero features on error
-            return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
+            return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device).cpu().numpy()
 
     def _setup_scene(self):
         """Set up the simulation scene."""
@@ -231,7 +232,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         ee_pos = self._get_end_effector_position()
 
         # Get camera RGB features
-        camera_features = self._get_camera_features()
+        camera_features_np = self._get_camera_features()
+        camera_features = torch.from_numpy(camera_features_np).to(self.device)
 
         self.last_actions = self.actions.clone()
         

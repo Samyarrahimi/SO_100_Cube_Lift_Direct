@@ -7,7 +7,7 @@ import dataclasses
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg, AssetBaseCfg
-from isaaclab.envs import DirectRLEnvCfg
+from isaaclab.envs import DirectRLEnvCfg, ViewerCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import CameraCfg, FrameTransformerCfg
 from isaaclab.sim import SimulationCfg
@@ -40,6 +40,8 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
             friction_correlation_distance=0.00625,
         )
     )
+
+    viewer = ViewerCfg(eye=(1.0, 1.0, 0.8), lookat=(0.5, 0.0, 0.2))
 
     # robot(s)
     robot_cfg: ArticulationCfg = dataclasses.replace(SO100_CFG, prim_path="/World/envs/env_.*/Robot")
