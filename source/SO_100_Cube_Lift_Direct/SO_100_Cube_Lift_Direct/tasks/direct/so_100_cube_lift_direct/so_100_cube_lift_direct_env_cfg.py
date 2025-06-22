@@ -45,7 +45,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     robot_cfg: ArticulationCfg = dataclasses.replace(SO100_CFG, prim_path="/World/envs/env_.*/Robot")
     if robot_cfg.init_state is None:
         robot_cfg.init_state = ArticulationCfg.InitialStateCfg()
-    robot_cfg.init_state = dataclasses.replace(robot_cfg.init_state, rot=(0.7071068, 0.0, 0.0, 0.7071068))
+    robot_cfg.init_state = dataclasses.replace(robot_cfg.init_state, pos=(0.0, 0.0, 1.05),rot=(0.7071068, 0.0, 0.0, 0.7071068))
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=32, env_spacing=2.5, replicate_physics=True)
@@ -57,7 +57,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     object_cfg: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/Object",
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(0.2, 0.0, 0.015), 
+            pos=(0.2, 0.0, 1.065), 
             rot=(1.0, 0.0, 0.0, 0.0)
         ),
         spawn=UsdFileCfg(
@@ -95,9 +95,9 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     #         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, 0.0), rot=(0.707, 0.0, 0.0, 0.707)),
     #         spawn=table_cfg
     # )
-    table = AssetBaseCfg(
+    table_cfg = AssetBaseCfg(
         prim_path="/World/envs/env_.*/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, 0.0), rot=(0.707, 0.0, 0.0, 0.707)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, 1.05), rot=(0.707, 0.0, 0.0, 0.707)),
         spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
     )
 

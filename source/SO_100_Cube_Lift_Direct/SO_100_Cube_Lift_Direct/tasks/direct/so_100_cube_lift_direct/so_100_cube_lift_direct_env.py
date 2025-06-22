@@ -146,6 +146,13 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Create object
         self.object = RigidObject(self.cfg.object_cfg)
 
+        table_cfg = self.cfg.table_cfg
+        table_cfg.spawn.func(
+            table_cfg.prim_path, table_cfg.spawn, 
+            translation=table_cfg.init_state.pos, 
+            orientation=table_cfg.init_state.rot
+        )
+
         self.ee_frame = FrameTransformer(self.cfg.ee_frame_cfg)
         
         # Add ground plane
