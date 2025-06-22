@@ -41,7 +41,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
         )
     )
 
-    viewer = ViewerCfg(eye=(1.0, 1.0, 0.8), lookat=(0.5, 0.0, 0.2))
+    viewer = ViewerCfg(eye=(1.0, 1.0, 1.85), lookat=(0.5, 0.0, 1.25))
 
     # robot(s)
     robot_cfg: ArticulationCfg = dataclasses.replace(SO100_CFG, prim_path="/World/envs/env_.*/Robot")
