@@ -80,24 +80,23 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Calculate camera features dimension dynamically
         self.camera_features_dim = self._get_camera_features_dimension()
 
-    def _get_camera_features(self) -> np.ndarray:
+    def _get_camera_features(self) -> torch.Tensor:
         """Extract ResNet18 features from camera RGB images."""
         # try:
         # Get camera data
         camera_data = self.camera.data.output
-        
         if camera_data is None or "rgb" not in camera_data:
             # Return zero features if camera data is not available
-            return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device).cpu().numpy()
-        
+            return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
+
         rgb_images = camera_data["rgb"]  # Shape: [num_envs, height, width, 3]
-        
+
         # Process images for ResNet
         features = torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
-        
+
         for i in range(self.num_envs):
             # Convert to tensor and normalize
-            img = torch.from_numpy(rgb_images[i]).float() / 255.0
+            img = rgb_images[i].float() / 255.0
             img = img.permute(2, 0, 1)  # HWC to CHW
             
             img = torch.unsqueeze(img, 0)  # Add batch dimension
@@ -109,7 +108,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
                 feature_flat = feature.view(feature.size(0), -1)
                 features[i] = feature_flat.squeeze()
         
-        return features.cpu().numpy()
+        return features
         # except Exception as e:
         #     print(f"Error extracting camera features: {e}")
         #     # Return zero features on error
@@ -212,7 +211,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             target_pos_b,       # 3 dims
             ee_pos,             # 3 dims
             self.last_actions,  # 6 dims
-            torch.from_numpy(camera_features)
+            camera_features
         ], dim=-1)
         observations = {
             "policy": states
