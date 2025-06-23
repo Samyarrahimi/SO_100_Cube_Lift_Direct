@@ -27,48 +27,67 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
 
     def __init__(self, cfg: So100CubeLiftDirectEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
-
         # Get joint indices for action mapping
         self.dof_idx, _ = self.robot.find_joints(self.cfg.dof_names)
-        
-        # Initialize target poses for each environment
-        self.target_poses = self._generate_target_poses()
-        
         # Store previous actions for observation
         self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
-
         # Initialize camera and ResNet model
-        self._setup_camera_and_model()
-        
-        # # Initialize observation space size
-        # self._compute_observation_space_size()
-        # self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
+        self._setup_model()
 
         self.joint_pos = self.robot.data.joint_pos
         self.joint_vel = self.robot.data.joint_vel
 
         self.joint_pos_init = self.robot.data.joint_pos.clone()
 
+        self.target_poses = torch.zeros((self.num_envs, 3), device=self.device)
+        self.target_poses[:, 0] = self.cfg.target_pos_x
+        self.target_poses[:, 1] = self.cfg.target_pos_y
+        self.target_poses[:, 2] = self.cfg.target_pos_z
+
+    def _joint_pos_rel(self) -> torch.Tensor:
+        """Get joint positions relative to initial positions."""
+        return self.robot.data.joint_pos[:, self.dof_idx] - self.robot.data.default_joint_pos[:, self.dof_idx]
+
+    def _joint_vel_rel(self) -> torch.Tensor:
+        """Get joint velocities relative to initial velocities."""
+        return self.robot.data.joint_vel[:, self.dof_idx] - self.robot.data.default_joint_vel[:, self.dof_idx]
+
+    def _object_position_in_robot_root_frame(self) -> torch.Tensor:
+        """Get object position in robot root frame."""
+        object_pos_w = self.object.data.root_pos_w[:, :3]
+        object_pos_b, _ = subtract_frame_transforms(
+            self.robot.data.root_state_w[:, :3], 
+            self.robot.data.root_state_w[:, 3:7], 
+            object_pos_w
+        )
+        return object_pos_b
+
+    def _target_position_in_robot_root_frame(self) -> torch.Tensor:
+        """Get target position in robot root frame."""
+        target_pos = self.target_poses[:, :3]
+        target_pos_b, _ = subtract_frame_transforms(
+            self.robot.data.root_state_w[:, :3], 
+            self.robot.data.root_state_w[:, 3:7], 
+            target_pos
+        )
+        return target_pos_b
+
     def _get_camera_features_dimension(self) -> int:
         """Calculate the dimension of camera features dynamically."""
         try:
             # Create a dummy input to get the output dimension
             dummy_input = torch.randn(1, 3, 256, 144).to(self.device)
-            
             with torch.no_grad():
                 dummy_output = self.resnet_model(dummy_input)
-                # Get the flattened dimension
                 features_dim = dummy_output.view(dummy_output.size(0), -1).size(1)
-            
             print(f"Camera features dimension: {features_dim}")
             return features_dim
-            
         except Exception as e:
             print(f"Error calculating camera features dimension: {e}")
             # Fallback to default ResNet18 feature dimension
             return 512
 
-    def _setup_camera_and_model(self):
+    def _setup_model(self):
         """Setup camera and ResNet model for feature extraction."""
         # Load pre-trained ResNet18 model
         self.resnet_model = models.resnet18(pretrained=True)
@@ -82,59 +101,55 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
 
     def _get_camera_features(self) -> torch.Tensor:
         """Extract ResNet18 features from camera RGB images."""
-        # try:
-        # Get camera data
-        camera_data = self.camera.data.output
-        if camera_data is None or "rgb" not in camera_data:
-            # Return zero features if camera data is not available
+        try:
+            # Get camera data
+            camera_data = self.camera.data.output
+            features = torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
+            if camera_data is None or "rgb" not in camera_data:
+                # Return zero features if camera data is not available
+                return features
+            # Shape: [num_envs, height, width, 3]
+            rgb_images = camera_data["rgb"]
+            for i in range(self.num_envs):
+                # Convert to tensor and normalize
+                img = rgb_images[i].float() / 255.0
+                img = img.permute(2, 0, 1)  # HWC to CHW
+                img = torch.unsqueeze(img, 0)  # Add batch dimension
+                # Extract features
+                with torch.no_grad():
+                    feature = self.resnet_model(img)
+                    # Flatten the feature tensor
+                    feature_flat = feature.view(feature.size(0), -1)
+                    features[i] = feature_flat.squeeze()
+            return features
+        except Exception as e:
+            print(f"Error extracting camera features: {e}")
+            # Return zero features on error
             return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
-
-        rgb_images = camera_data["rgb"]  # Shape: [num_envs, height, width, 3]
-
-        # Process images for ResNet
-        features = torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
-
-        for i in range(self.num_envs):
-            # Convert to tensor and normalize
-            img = rgb_images[i].float() / 255.0
-            img = img.permute(2, 0, 1)  # HWC to CHW
-            
-            img = torch.unsqueeze(img, 0)  # Add batch dimension
-            
-            # Extract features
-            with torch.no_grad():
-                feature = self.resnet_model(img)
-                # Flatten the feature tensor
-                feature_flat = feature.view(feature.size(0), -1)
-                features[i] = feature_flat.squeeze()
-        
-        return features
-        # except Exception as e:
-        #     print(f"Error extracting camera features: {e}")
-        #     # Return zero features on error
-        #     return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device).cpu().numpy()
 
     def _setup_scene(self):
         """Set up the simulation scene."""
         # Create robot
         self.robot = Articulation(self.cfg.robot_cfg)
-        
+        # Create end-effector frame
+        self.ee_frame = FrameTransformer(self.cfg.ee_frame_cfg)
         # Create object
         self.object = RigidObject(self.cfg.object_cfg)
-
+        # Create cube marker
+        self.cube_marker = FrameTransformer(self.cfg.cube_marker_cfg)
+        # Create camera
         self.camera = Camera(self.cfg.camera_cfg)
-
+        # Create table
         table_cfg = self.cfg.table_cfg
         table_cfg.spawn.func(
-            table_cfg.prim_path, table_cfg.spawn, 
-            translation=table_cfg.init_state.pos, 
+            table_cfg.prim_path, table_cfg.spawn,
+            translation=table_cfg.init_state.pos,
             orientation=table_cfg.init_state.rot
         )
-
-        self.ee_frame = FrameTransformer(self.cfg.ee_frame_cfg)
+        
         # Add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
-        # Add articulations to scene
+        # Add articulations to scene (robot, object, table)
         self.scene.articulations["robot"] = self.robot
         self.scene.rigid_objects["object"] = self.object
         # Clone environments
@@ -172,45 +187,35 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         gripper_actions = self.actions[:, 5:6]
         gripper_targets = torch.where(gripper_actions > 0.5, 0.5, 0.0)
         self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
+        self.last_actions = self.actions.clone()
 
     def _get_observations(self) -> dict:
         """Get observations for the policy."""
         # Joint positions (relative to initial positions)
-        joint_pos = self.robot.data.joint_pos[:, self.dof_idx]
-        joint_pos_rel = joint_pos - self.joint_pos_init[:, self.dof_idx]
-
-        # Joint velocities
-        joint_vel = self.robot.data.joint_vel[:, self.dof_idx]
-        
+        joint_pos_rel = self._joint_pos_rel()
+        # Joint velocities (relative to initial velocities)
+        joint_vel_rel = self._joint_vel_rel()
         # Object position in robot root frame
-        object_pos_w = self.object.data.root_pos_w[:, :3]
-        object_pos_b, _ = subtract_frame_transforms(
-            self.robot.data.root_state_w[:, :3], 
-            self.robot.data.root_state_w[:, 3:7], 
-            object_pos_w
-        )
-        
-        # Target pose (position only for now)
-        target_pos = self.target_poses[:, :3]
-        target_pos_b, _ = subtract_frame_transforms(
-            self.robot.data.root_state_w[:, :3], 
-            self.robot.data.root_state_w[:, 3:7], 
-            target_pos
-        )
+        object_pos_b = self._object_position_in_robot_root_frame()
+        # Target position in robot root frame
+        target_pos_b = self._target_position_in_robot_root_frame()
         # End-effector position (approximate using forward kinematics)
-        ee_pos = self._get_end_effector_position()
-
+        #ee_pos = self._get_end_effector_position()
         # Get camera RGB features
         camera_features = self._get_camera_features()
-
-        self.last_actions = self.actions.clone()
+        print("joint_pos_rel shape: ", joint_pos_rel.shape)
+        print("joint_vel_rel shape: ", joint_vel_rel.shape)
+        print("object_pos_b shape: ", object_pos_b.shape)
+        print("target_pos_b shape: ", target_pos_b.shape)
+        print("last_actions shape: ", self.last_actions.shape)
+        print("camera_features shape: ", camera_features.shape)
         # Concatenate all observations
         states = torch.cat([
             joint_pos_rel,      # 6 dims
-            joint_vel,          # 6 dims
+            joint_vel_rel,      # 6 dims
             object_pos_b,       # 3 dims
             target_pos_b,       # 3 dims
-            ee_pos,             # 3 dims
+            #ee_pos,             # 3 dims
             self.last_actions,  # 6 dims
             camera_features
         ], dim=-1)
@@ -219,71 +224,78 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         }
         return observations
 
+    def _object_ee_distance(self, std: float) -> torch.Tensor:
+        """Get object-end effector distance."""
+        cube_pos_w = self.object.data.root_pos_w[:, :3]
+        ee_w = self.ee_frame.data.target_pos_w[..., 0, :]
+        cube_ee_distance = torch.norm(cube_pos_w - ee_w, dim=1)
+        return 1 - torch.tanh(cube_ee_distance / std)
+
+    def _object_is_lifted(self, minimal_height: float) -> torch.Tensor:
+        """Check if object is lifted."""
+        object_height = self.object.data.root_pos_w[:, 2]
+        return torch.where(object_height > minimal_height, 1.0, 0.0)
+
+    def _object_goal_distance(self, minimal_height: float, std: float) -> torch.Tensor:
+        """Get object goal distance."""
+        des_pos_b = self.target_poses[:, :3]
+        des_pos_w, _ = combine_frame_transforms(
+            self.robot.data.root_state_w[:, :3], 
+            self.robot.data.root_state_w[:, 3:7], 
+            des_pos_b
+        )
+        distance = torch.norm(des_pos_w - self.object.data.root_pos_w[:, :3], dim=1)
+        return (self.object.data.root_pos_w[:, 2] > minimal_height) * (1.0 - torch.tanh(distance / std))
+        
+    def _action_rate_penalty(self, actions, prev_actions) -> torch.Tensor:
+        """Penalize the rate of change of the actions using L2 squared kernel."""
+        return torch.sum(torch.square(actions - prev_actions), dim=1)
+
+    def _joint_vel_penalty(self) -> torch.Tensor:
+        """Penalize the joint velocities using L2 norm."""
+        return torch.sum(torch.square(self.robot.data.joint_vel[:, self.dof_idx]), dim=1) 
+
     def _get_rewards(self) -> torch.Tensor:
         """Compute rewards based on the manager-based environment reward structure."""
-        
-        # 1. Reaching object reward (end-effector to object distance)
-        object_pos_w = self.object.data.root_pos_w[:, :3]
-        ee_pos_w = self.robot.data.root_pos_w[:, :3]  # Simplified - you might need actual EE position
-        object_ee_distance = torch.norm(object_pos_w - ee_pos_w, dim=1)
-        reaching_object_reward = 1.0 - torch.tanh(object_ee_distance / 0.1)  # std = 0.1
-        
+        # 1. Reaching object reward
+        reaching_reward = self._object_ee_distance(std=self.cfg.reaching_reward_std)
         # 2. Lifting object reward
-        object_height = self.object.data.root_pos_w[:, 2]
-        lifting_object_reward = torch.where(object_height > 0.04, 1.0, 0.0)  # minimal_height = 0.04
-        
+        lifting_reward = self._object_is_lifted(minimal_height=self.cfg.lifting_min_height)
         # 3. Object goal tracking reward (coarse)
-        target_pos_w = self.target_poses[:, :3]
-        goal_distance = torch.norm(target_pos_w - object_pos_w, dim=1)
-        object_goal_tracking_reward = (object_height > 0.04) * (1.0 - torch.tanh(goal_distance / 0.3))  # std = 0.3
-        
-        # 4. Object goal tracking reward (fine-grained)
-        object_goal_tracking_fine_reward = (object_height > 0.04) * (1.0 - torch.tanh(goal_distance / 0.05))  # std = 0.05
-        
-        # 5. Action rate penalty
-        if hasattr(self, 'last_actions'):
-            action_diff = self.actions - self.last_actions
-            action_rate_penalty = torch.norm(action_diff, dim=1)
-        else:
-            action_rate_penalty = torch.zeros(self.num_envs, device=self.device)
-        
-        # 6. Joint velocity penalty
-        joint_vel = self.robot.data.joint_vel[:, self.dof_idx]
-        joint_vel_penalty = torch.norm(joint_vel, dim=1)
-        
-        # Combine all rewards with weights (matching manager-based config)
-        total_reward = (
-            1.0 * reaching_object_reward +           # weight = 1.0
-            15.0 * lifting_object_reward +           # weight = 15.0
-            16.0 * object_goal_tracking_reward +     # weight = 16.0
-            5.0 * object_goal_tracking_fine_reward + # weight = 5.0
-            -1e-4 * action_rate_penalty +            # weight = -1e-4
-            -1e-4 * joint_vel_penalty                # weight = -1e-4
+        object_goal_tracking_reward = self._object_goal_distance(
+            minimal_height=self.cfg.goal_tracking_min_height, std=self.cfg.goal_tracking_std
         )
-        
+        # 4. Object goal tracking reward (fine-grained)
+        object_goal_tracking_fine_reward = self._object_goal_distance(
+            minimal_height=self.cfg.goal_tracking_fine_min_height, 
+            std=self.cfg.goal_tracking_fine_std
+        )
+        # 5. Action rate penalty
+        action_rate_penalty = self._action_rate_penalty(self.actions, self.last_actions)
+        print("actions: ", self.actions)
+        print("last_actions: ", self.last_actions)
+        # 6. Joint velocity penalty
+        joint_vel_penalty = self._joint_vel_penalty()
+        # Combine all rewards with weights
+        total_reward = (
+            self.cfg.reaching_reward_weight * reaching_reward +
+            self.cfg.lifting_reward_weight * lifting_reward +
+            self.cfg.goal_tracking_weight * object_goal_tracking_reward +
+            self.cfg.goal_tracking_fine_weight * object_goal_tracking_fine_reward +
+            self.cfg.action_penalty_weight * action_rate_penalty +
+            self.cfg.joint_vel_penalty_weight * joint_vel_penalty
+        )
+        print(f"Rewards: {reaching_reward}, \n{lifting_reward}, \n{object_goal_tracking_reward}, \n{object_goal_tracking_fine_reward}, \n{action_rate_penalty}, \n{joint_vel_penalty}")
         return total_reward.unsqueeze(-1)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Get done flags based on manager-based environment termination conditions."""
-        
         # 1. Episode timeout
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         # 2. Object dropping (root height below minimum)
         object_height = self.object.data.root_pos_w[:, 2]
-        object_dropping = object_height < -0.05  # minimum_height = -0.05
-        
+        object_dropping = object_height < 1.055
         return object_dropping, time_out
-    
-    def _generate_target_poses(self) -> torch.Tensor:
-        """Generate fixed target pose for all environments using manager-based ranges."""
-        target_poses = torch.zeros((self.num_envs, 3), device=self.device)
-        
-        # Use the center of the manager-based ranges
-        target_poses[:, 0] = 0.5  # Center of (0.4, 0.6)
-        target_poses[:, 1] = 0.0  # Center of (-0.25, 0.25)  
-        target_poses[:, 2] = 0.375  # Center of (0.25, 0.5)
-        
-        return target_poses
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         """Reset specific environments based on manager-based environment reset logic."""
@@ -298,8 +310,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         default_root_state = self.object.data.default_root_state[env_ids]
 
         object_pos = env_origins + default_root_state[:, :3]
-
-        print(f"Object pos: {object_pos}")
         object_quat = default_root_state[:, 3:7]
         object_vel = default_root_state[:, 7:13]
         self.object.data.root_pos_w[env_ids] = object_pos

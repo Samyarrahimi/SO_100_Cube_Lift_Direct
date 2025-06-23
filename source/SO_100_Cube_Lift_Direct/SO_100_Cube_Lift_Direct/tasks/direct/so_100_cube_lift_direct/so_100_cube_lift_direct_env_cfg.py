@@ -27,7 +27,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 5.0
     # - spaces definition
     action_space = 6
-    observation_space = 539
+    observation_space = 17152 #539
     state_space = 0
 
     sim: SimulationCfg = SimulationCfg(
@@ -87,16 +87,6 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
         spawn=None
     )
 
-    # table_cfg = sim_utils.UsdFileCfg(
-    #     usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd",
-    #     scale=(1.0, 1.0, 1.0),
-    #     rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True),
-    # )
-    # table = AssetBaseCfg(
-    #         prim_path="/World/envs/env_.*/Table",
-    #         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, 0.0), rot=(0.707, 0.0, 0.0, 0.707)),
-    #         spawn=table_cfg
-    # )
     table_cfg = AssetBaseCfg(
         prim_path="/World/envs/env_.*/Table",
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.5, 0.0, 1.05), rot=(0.707, 0.0, 0.0, 0.707)),
@@ -115,35 +105,64 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     marker_cfg.prim_path = "/Visuals/FrameTransformer"
 
     ee_frame_cfg = FrameTransformerCfg(
-            prim_path="/World/envs/env_.*/Robot/Base",
-            visualizer_cfg=marker_cfg,
-            debug_vis=False,  # disable visualization
-            target_frames=[
-                FrameTransformerCfg.FrameCfg(
-                    # Original path in comments for reference
-                    # prim_path="{ENV_REGEX_NS}/Robot/SO_100/SO_5DOF_ARM100_05d_SLDASM/Fixed_Gripper",
-                    # Updated path for the new USD structure
-                    prim_path="/World/envs/env_.*/Robot/Fixed_Gripper",
-                    name="end_effector",
-                    offset=OffsetCfg(
-                        pos=(0.01, -0.0, 0.1),
-                    ),
+        prim_path="/World/envs/env_.*/Robot/Base",
+        visualizer_cfg=marker_cfg,
+        debug_vis=False,  # disable visualization
+        target_frames=[
+            FrameTransformerCfg.FrameCfg(
+                # Original path in comments for reference
+                # prim_path="{ENV_REGEX_NS}/Robot/SO_100/SO_5DOF_ARM100_05d_SLDASM/Fixed_Gripper",
+                # Updated path for the new USD structure
+                prim_path="/World/envs/env_.*/Robot/Fixed_Gripper",
+                name="end_effector",
+                offset=OffsetCfg(
+                    pos=(0.01, -0.0, 0.1),
                 ),
-            ],
+            ),
+        ],
+    )
+
+    # Configure cube marker with different color and path
+    cube_marker_cfg = copy.deepcopy(FRAME_MARKER_CFG)
+    cube_marker_cfg.markers = {
+        "frame": sim_utils.UsdFileCfg(
+            usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/frame_prim.usd",
+            scale=(0.05, 0.05, 0.05),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
         )
+    }
+    cube_marker_cfg.prim_path = "/Visuals/CubeFrameMarker"
     
+    cube_marker_cfg = FrameTransformerCfg(
+        prim_path="/World/envs/env_.*/Object",
+        visualizer_cfg=cube_marker_cfg,
+        debug_vis=False,  # disable visualization
+        target_frames=[
+            FrameTransformerCfg.FrameCfg(
+                prim_path="/World/envs/env_.*/Object",
+                name="cube",
+                offset=OffsetCfg(
+                    pos=(0.0, 0.0, 0.0),
+                ),
+            ),
+        ],
+    )
+
     # Target pose ranges for the object
-    target_pos_x_range = (0.4, 0.6)
-    target_pos_y_range = (-0.25, 0.25)
-    target_pos_z_range = (0.25, 0.5)
+    target_pos_x = 0.5
+    target_pos_y = 0.0
+    target_pos_z = 0.375
     
     # Reward parameters
+    reaching_reward_weight = 1.0
     reaching_reward_std = 0.1
-    lifting_min_height = 0.04
+    lifting_reward_weight = 15.0
+    lifting_min_height = 1.09
+    goal_tracking_weight = 16.0
     goal_tracking_std = 0.3
+    goal_tracking_min_height = 1.09
+    goal_tracking_fine_weight = 5.0
     goal_tracking_fine_std = 0.05
+    goal_tracking_fine_min_height = 1.09
     action_penalty_weight = -1e-4
     joint_vel_penalty_weight = -1e-4
-    
-    # Termination parameters
-    object_drop_height = -0.05
