@@ -134,11 +134,12 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.ee_frame = FrameTransformer(self.cfg.ee_frame_cfg)
         # Add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
-        # Clone environments
-        self.scene.clone_environments(copy_from_source=False)
         # Add articulations to scene
         self.scene.articulations["robot"] = self.robot
         self.scene.rigid_objects["object"] = self.object
+        # Clone environments
+        self.scene.clone_environments(copy_from_source=False)
+
         # Add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
@@ -286,23 +287,30 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         """Reset specific environments based on manager-based environment reset logic."""
-        
         if env_ids is None:
-            env_ids = torch.arange(self.num_envs, device=self.device)
+            env_ids = self.robot._ALL_INDICES
         
         # Call super to manage internal buffers (episode length, etc.)
         super()._reset_idx(env_ids)
+        # Get the origins for the environments being reset
+        env_origins = self.scene.env_origins[env_ids]  # shape: (num_envs, 3)
+
+        default_root_state = self.object.data.default_root_state[env_ids]
+
+        object_pos = env_origins + default_root_state[:, :3]
+
+        print(f"Object pos: {object_pos}")
+        object_quat = default_root_state[:, 3:7]
+        object_vel = default_root_state[:, 7:13]
+        self.object.data.root_pos_w[env_ids] = object_pos
+        self.object.data.root_quat_w[env_ids] = object_quat
+        self.object.data.root_vel_w[env_ids] = object_vel
+        default_root_state[:, :3] = object_pos
+        self.object.write_root_state_to_sim(default_root_state, env_ids)
         
-        # Reset object to random position on table
-        object_pos = torch.zeros((len(env_ids), 3), device=self.device)
-        object_pos[:, 0] = torch.rand(len(env_ids), device=self.device) * 0.2 + 0.4  # x: 0.4-0.6
-        object_pos[:, 1] = torch.rand(len(env_ids), device=self.device) * 0.5 - 0.25  # y: -0.25 to 0.25
-        object_pos[:, 2] = 0.1  # z: table height + object half-size
-        
-        # Set object position - use the correct IsaacLab API
-        # Based on the documentation, we should use the object's data to set position
-        self.object.data.root_pos_w[env_ids, :3] = object_pos
-        self.object.data.root_quat_w[env_ids, :] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).repeat(len(env_ids), 1)
-        
-        # Reset object velocity to zero
-        self.object.data.root_vel_w[env_ids, :] = torch.zeros((len(env_ids), 6), device=self.device)
+        joint_pos = self.robot.data.default_joint_pos[env_ids]
+        joint_vel = self.robot.data.default_joint_vel[env_ids]
+        self.joint_pos[env_ids] = joint_pos
+        self.joint_vel[env_ids] = joint_vel
+
+        self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
