@@ -40,7 +40,7 @@ memory:
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html
 agent:
   class: PPO
-  rollouts: 32
+  rollouts: 24
   learning_epochs: 8
   mini_batches: 8
   discount_factor: 0.99
@@ -63,7 +63,7 @@ agent:
   value_loss_scale: 2.0
   kl_threshold: 0.0
   rewards_shaper_scale: 0.1
-  time_limit_bootstrap: False
+  time_limit_bootstrap: True
   # logging and checkpoint
   experiment:
     directory: "SO_100_Cube_Lift_Direct"

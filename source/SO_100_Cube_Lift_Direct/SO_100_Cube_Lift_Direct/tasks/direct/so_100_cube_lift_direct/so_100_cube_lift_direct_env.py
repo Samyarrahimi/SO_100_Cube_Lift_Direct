@@ -9,6 +9,8 @@ import torch
 from collections.abc import Sequence
 import numpy as np
 import torchvision.models as models
+import os
+os.environ["HYDRA_FULL_ERROR"] = "1"
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, RigidObject
@@ -30,7 +32,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Get joint indices for action mapping
         self.dof_idx, _ = self.robot.find_joints(self.cfg.dof_names)
         # Store previous actions for observation
-        self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
+        #self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
         # Initialize camera and ResNet model
         self._setup_model()
 
@@ -95,7 +97,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.resnet_model = torch.nn.Sequential(*list(self.resnet_model.children())[:-1])
         self.resnet_model.eval()
         self.resnet_model.to(self.device)
-        
         # Calculate camera features dimension dynamically
         self.camera_features_dim = self._get_camera_features_dimension()
 
@@ -146,7 +147,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             translation=table_cfg.init_state.pos,
             orientation=table_cfg.init_state.rot
         )
-        
         # Add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         # Add articulations to scene (robot, object, table)
@@ -158,25 +158,11 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=3000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
-
-    def _get_end_effector_position(self) -> torch.Tensor:
-        """Get end effector position using FrameTransformer."""
-        # Get the end effector position from the frame transformer
-        # This is the proper way to get end effector position in IsaacLab
-        ee_pos_w = self.ee_frame.data.target_pos_w[..., 0, :]  # Shape: [num_envs, 3]
-        # Get robot root position and orientation
-        robot_root_pos = self.robot.data.root_state_w[:, :3]
-        robot_root_quat = self.robot.data.root_state_w[:, 3:7]
-        # Convert to robot body frame for consistency with other observations
-        ee_pos_b, _ = subtract_frame_transforms(
-            robot_root_pos, 
-            robot_root_quat, 
-            ee_pos_w
-        )
-        return ee_pos_b
     
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         """Store actions before physics step."""
+        print("in pre physics step")
+        print("actions: ", actions.shape)
         self.actions = actions.clone()
 
     def _apply_action(self) -> None:
@@ -187,7 +173,9 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         gripper_actions = self.actions[:, 5:6]
         gripper_targets = torch.where(gripper_actions > 0.5, 0.5, 0.0)
         self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
-        self.last_actions = self.actions.clone()
+        print("in apply action")
+        print("actions: ", self.actions.shape)
+        #self.last_actions = self.actions.clone()
 
     def _get_observations(self) -> dict:
         """Get observations for the policy."""
@@ -199,26 +187,19 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         object_pos_b = self._object_position_in_robot_root_frame()
         # Target position in robot root frame
         target_pos_b = self._target_position_in_robot_root_frame()
-        # End-effector position (approximate using forward kinematics)
-        #ee_pos = self._get_end_effector_position()
         # Get camera RGB features
         camera_features = self._get_camera_features()
-        print("joint_pos_rel shape: ", joint_pos_rel.shape)
-        print("joint_vel_rel shape: ", joint_vel_rel.shape)
-        print("object_pos_b shape: ", object_pos_b.shape)
-        print("target_pos_b shape: ", target_pos_b.shape)
-        print("last_actions shape: ", self.last_actions.shape)
-        print("camera_features shape: ", camera_features.shape)
         # Concatenate all observations
         states = torch.cat([
             joint_pos_rel,      # 6 dims
             joint_vel_rel,      # 6 dims
             object_pos_b,       # 3 dims
             target_pos_b,       # 3 dims
-            #ee_pos,             # 3 dims
-            self.last_actions,  # 6 dims
+            #self.last_actions,  # 6 dims
             camera_features
         ], dim=-1)
+        print("in get observations")
+        print("states: ", states.shape)
         observations = {
             "policy": states
         }
@@ -271,9 +252,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             std=self.cfg.goal_tracking_fine_std
         )
         # 5. Action rate penalty
-        action_rate_penalty = self._action_rate_penalty(self.actions, self.last_actions)
-        print("actions: ", self.actions)
-        print("last_actions: ", self.last_actions)
+        #action_rate_penalty = self._action_rate_penalty(self.actions, self.last_actions)
         # 6. Joint velocity penalty
         joint_vel_penalty = self._joint_vel_penalty()
         # Combine all rewards with weights
@@ -282,10 +261,11 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             self.cfg.lifting_reward_weight * lifting_reward +
             self.cfg.goal_tracking_weight * object_goal_tracking_reward +
             self.cfg.goal_tracking_fine_weight * object_goal_tracking_fine_reward +
-            self.cfg.action_penalty_weight * action_rate_penalty +
+            #self.cfg.action_penalty_weight * action_rate_penalty +
             self.cfg.joint_vel_penalty_weight * joint_vel_penalty
         )
-        print(f"Rewards: {reaching_reward}, \n{lifting_reward}, \n{object_goal_tracking_reward}, \n{object_goal_tracking_fine_reward}, \n{action_rate_penalty}, \n{joint_vel_penalty}")
+        print("in get rewards")
+        print("total_reward: ", total_reward.unsqueeze(-1).shape)
         return total_reward.unsqueeze(-1)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -295,13 +275,16 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # 2. Object dropping (root height below minimum)
         object_height = self.object.data.root_pos_w[:, 2]
         object_dropping = object_height < 1.055
+        print("in get dones")
+        print("object_dropping: ", object_dropping.shape)
+        print("time_out: ", time_out.shape)
         return object_dropping, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         """Reset specific environments based on manager-based environment reset logic."""
         if env_ids is None:
             env_ids = self.robot._ALL_INDICES
-        
+
         # Call super to manage internal buffers (episode length, etc.)
         super()._reset_idx(env_ids)
         # Get the origins for the environments being reset
@@ -324,3 +307,5 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.joint_vel[env_ids] = joint_vel
 
         self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+
+        #self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)

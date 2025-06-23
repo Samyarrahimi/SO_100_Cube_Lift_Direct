@@ -27,7 +27,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 5.0
     # - spaces definition
     action_space = 6
-    observation_space = 17152 #539
+    observation_space = 530*32 #539
     state_space = 0
 
     sim: SimulationCfg = SimulationCfg(
