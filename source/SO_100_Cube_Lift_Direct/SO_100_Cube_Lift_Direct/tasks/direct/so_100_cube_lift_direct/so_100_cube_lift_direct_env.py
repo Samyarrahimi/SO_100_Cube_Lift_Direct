@@ -92,9 +92,10 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
     def _setup_model(self):
         """Setup camera and ResNet model for feature extraction."""
         # Load pre-trained ResNet18 model
-        self.resnet_model = models.resnet18(pretrained=True)
-        # Remove the final classification layer to get features
-        self.resnet_model = torch.nn.Sequential(*list(self.resnet_model.children())[:-1])
+        self.resnet_model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        # Remove ONLY the final classification layer, keep avgpool
+        self.resnet_model.fc = torch.nn.Identity()  # Replace FC with identity
+        
         self.resnet_model.eval()
         self.resnet_model.to(self.device)
         # Calculate camera features dimension dynamically
@@ -161,8 +162,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
     
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         """Store actions before physics step."""
-        print("in pre physics step")
-        print("actions: ", actions.shape)
         self.actions = actions.clone()
 
     def _apply_action(self) -> None:
@@ -173,8 +172,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         gripper_actions = self.actions[:, 5:6]
         gripper_targets = torch.where(gripper_actions > 0.5, 0.5, 0.0)
         self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
-        print("in apply action")
-        print("actions: ", self.actions.shape)
         #self.last_actions = self.actions.clone()
 
     def _get_observations(self) -> dict:
@@ -198,8 +195,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             #self.last_actions,  # 6 dims
             camera_features
         ], dim=-1)
-        print("in get observations")
-        print("states: ", states.shape)
         observations = {
             "policy": states
         }
@@ -264,8 +259,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             #self.cfg.action_penalty_weight * action_rate_penalty +
             self.cfg.joint_vel_penalty_weight * joint_vel_penalty
         )
-        print("in get rewards")
-        print("total_reward: ", total_reward.unsqueeze(-1).shape)
         return total_reward.unsqueeze(-1)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -275,9 +268,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # 2. Object dropping (root height below minimum)
         object_height = self.object.data.root_pos_w[:, 2]
         object_dropping = object_height < 1.055
-        print("in get dones")
-        print("object_dropping: ", object_dropping.shape)
-        print("time_out: ", time_out.shape)
         return object_dropping, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
