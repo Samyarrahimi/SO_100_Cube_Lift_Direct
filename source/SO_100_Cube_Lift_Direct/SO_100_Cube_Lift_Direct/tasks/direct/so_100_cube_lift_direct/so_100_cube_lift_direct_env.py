@@ -78,7 +78,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         """Calculate the dimension of camera features dynamically."""
         try:
             # Create a dummy input to get the output dimension
-            dummy_input = torch.randn(1, 3, 256, 144).to(self.device)
+            dummy_input = torch.randn(1, 3, 144, 256).to(self.device)
             with torch.no_grad():
                 dummy_output = self.resnet_model(dummy_input)
                 features_dim = dummy_output.view(dummy_output.size(0), -1).size(1)
