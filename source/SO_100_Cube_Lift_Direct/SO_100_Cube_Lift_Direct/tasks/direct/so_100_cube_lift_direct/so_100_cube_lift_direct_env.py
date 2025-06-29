@@ -35,9 +35,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         #self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
         # Initialize camera and ResNet model
         #self._setup_model()
-
-        self.joint_pos = self.robot.data.joint_pos
-        self.joint_vel = self.robot.data.joint_vel
+        
+        self.action_scale = self.cfg.action_scale
 
         self.target_poses = torch.zeros((self.num_envs, 3), device=self.device)
         self.target_poses[:, 0] = self.cfg.target_pos_x
@@ -160,7 +159,10 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
     
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         """Store actions before physics step."""
-        self.actions = actions.clone()
+        self.actions = self.action_scale * actions.clone()
+        if self.common_step_counter % 200==0:
+            print(f"actions: {actions}")
+            print(f"actions scaled: {self.actions}")
 
     def _apply_action(self) -> None:
         # apply arm actions
@@ -172,6 +174,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
         self.robot.write_data_to_sim()
         self.last_actions = self.actions.clone()
+        if self.common_step_counter % 200==0:
+            print(f"last actions: {self.last_actions}")
 
     def _get_observations(self) -> dict:
         """Get observations for the policy."""
@@ -266,6 +270,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             action_rate_penalty_weight * action_rate_penalty +
             joint_vel_penalty_weight * joint_vel_penalty
         )
+        if self.common_step_counter % 200 == 0:
+            print(f"reward at step {self.common_step_counter} is {total_reward.unsqueeze(-1)}")
         return total_reward.unsqueeze(-1)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -297,12 +303,20 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.object.data.root_vel_w[env_ids] = object_vel
         default_root_state[:, :3] = object_pos
         self.object.write_root_state_to_sim(default_root_state, env_ids)
-        
+
+
         joint_pos = self.robot.data.default_joint_pos[env_ids]
         joint_vel = self.robot.data.default_joint_vel[env_ids]
-        self.joint_pos[env_ids] = joint_pos
-        self.joint_vel[env_ids] = joint_vel
-
+        default_root_state = self.robot.data.default_root_state[env_ids]
+        default_root_state[:, :3] += self.scene.env_origins[env_ids]
+        self.robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
+        self.robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+
+
+        # joint_pos = self.robot.data.default_joint_pos[env_ids]
+        # joint_vel = self.robot.data.default_joint_vel[env_ids]
+
+        # self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
