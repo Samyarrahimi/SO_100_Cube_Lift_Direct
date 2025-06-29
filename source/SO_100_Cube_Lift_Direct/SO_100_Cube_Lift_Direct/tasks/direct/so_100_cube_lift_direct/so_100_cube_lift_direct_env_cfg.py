@@ -27,8 +27,8 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 5.0
     # - spaces definition
     action_space = 6
-    observation_space = 530
-    state_space = 0
+    observation_space = 536
+    state_space = 536
 
     sim: SimulationCfg = SimulationCfg(
         dt=0.01,  # 100Hz
@@ -41,7 +41,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
         )
     )
 
-    viewer = ViewerCfg(eye=(1.0, 1.0, 1.85), lookat=(0.5, 0.0, 1.25))
+    viewer = ViewerCfg(eye=(0.25, 0.15, 2), lookat=(0.1, 0.0, 1.9))
 
     # robot(s)
     robot_cfg: ArticulationCfg = dataclasses.replace(SO100_CFG, prim_path="/World/envs/env_.*/Robot")
@@ -154,9 +154,9 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     target_pos_z = 0.375
     
     # Reward parameters
-    reaching_reward_weight = 1.0
+    reaching_reward_weight = 2.0
     reaching_reward_std = 0.1
-    lifting_reward_weight = 15.0
+    lifting_reward_weight = 25.0
     lifting_min_height = 1.09
     goal_tracking_weight = 16.0
     goal_tracking_std = 0.3

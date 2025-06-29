@@ -172,7 +172,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         gripper_actions = self.actions[:, 5:6]
         gripper_targets = torch.where(gripper_actions > 0.5, 0.5, 0.0)
         self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
-        #self.last_actions = self.actions.clone()
+        self.last_actions = self.actions.clone()
 
     def _get_observations(self) -> dict:
         """Get observations for the policy."""
@@ -192,7 +192,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             joint_vel_rel,      # 6 dims
             object_pos_b,       # 3 dims
             target_pos_b,       # 3 dims
-            #self.last_actions,  # 6 dims
+            self.last_actions,  # 6 dims
             camera_features
         ], dim=-1)
         observations = {
@@ -237,26 +237,26 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         reaching_reward = self._object_ee_distance(std=self.cfg.reaching_reward_std)
         # 2. Lifting object reward
         lifting_reward = self._object_is_lifted(minimal_height=self.cfg.lifting_min_height)
-        # 3. Object goal tracking reward (coarse)
-        object_goal_tracking_reward = self._object_goal_distance(
-            minimal_height=self.cfg.goal_tracking_min_height, std=self.cfg.goal_tracking_std
-        )
-        # 4. Object goal tracking reward (fine-grained)
-        object_goal_tracking_fine_reward = self._object_goal_distance(
-            minimal_height=self.cfg.goal_tracking_fine_min_height, 
-            std=self.cfg.goal_tracking_fine_std
-        )
+        # # 3. Object goal tracking reward (coarse)
+        # object_goal_tracking_reward = self._object_goal_distance(
+        #     minimal_height=self.cfg.goal_tracking_min_height, std=self.cfg.goal_tracking_std
+        # )
+        # # 4. Object goal tracking reward (fine-grained)
+        # object_goal_tracking_fine_reward = self._object_goal_distance(
+        #     minimal_height=self.cfg.goal_tracking_fine_min_height, 
+        #     std=self.cfg.goal_tracking_fine_std
+        # )
         # 5. Action rate penalty
-        #action_rate_penalty = self._action_rate_penalty(self.actions, self.last_actions)
+        action_rate_penalty = self._action_rate_penalty(self.actions, self.last_actions)
         # 6. Joint velocity penalty
         joint_vel_penalty = self._joint_vel_penalty()
         # Combine all rewards with weights
         total_reward = (
             self.cfg.reaching_reward_weight * reaching_reward +
             self.cfg.lifting_reward_weight * lifting_reward +
-            self.cfg.goal_tracking_weight * object_goal_tracking_reward +
-            self.cfg.goal_tracking_fine_weight * object_goal_tracking_fine_reward +
-            #self.cfg.action_penalty_weight * action_rate_penalty +
+            # self.cfg.goal_tracking_weight * object_goal_tracking_reward +
+            # self.cfg.goal_tracking_fine_weight * object_goal_tracking_fine_reward +
+            self.cfg.action_penalty_weight * action_rate_penalty +
             self.cfg.joint_vel_penalty_weight * joint_vel_penalty
         )
         return total_reward.unsqueeze(-1)
@@ -298,4 +298,4 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
 
         self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
-        #self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
+        self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
