@@ -27,8 +27,8 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 5.0
     # - spaces definition
     action_space = 6
-    observation_space = 536
-    state_space = 536
+    observation_space = 24
+    state_space = 24
 
     sim: SimulationCfg = SimulationCfg(
         dt=0.01,  # 100Hz
@@ -76,16 +76,16 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
         ),
     )
 
-    # Camera configuration
-    camera_cfg: CameraCfg = CameraCfg(
-        prim_path="/World/envs/env_.*/Robot/Wrist_Pitch_Roll/Gripper_Camera/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
-        update_period=0.04,
-        height=144,
-        width=256,
-        data_types=["rgb"],
-        offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(180.0, 0.0, 0.0, 0.0), convention="ros"),
-        spawn=None
-    )
+    # # Camera configuration
+    # camera_cfg: CameraCfg = CameraCfg(
+    #     prim_path="/World/envs/env_.*/Robot/Wrist_Pitch_Roll/Gripper_Camera/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
+    #     update_period=0.04,
+    #     height=144,
+    #     width=256,
+    #     data_types=["rgb"],
+    #     offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(180.0, 0.0, 0.0, 0.0), convention="ros"),
+    #     spawn=None
+    # )
 
     table_cfg = AssetBaseCfg(
         prim_path="/World/envs/env_.*/Table",
@@ -155,14 +155,18 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     
     # Reward parameters
     reaching_reward_weight = 2.0
-    reaching_reward_std = 0.1
+    reaching_reward_std = 0.05
+
     lifting_reward_weight = 25.0
-    lifting_min_height = 1.09
+    lifting_min_height = 1.07
+
     goal_tracking_weight = 16.0
     goal_tracking_std = 0.3
     goal_tracking_min_height = 1.09
+
     goal_tracking_fine_weight = 5.0
     goal_tracking_fine_std = 0.05
     goal_tracking_fine_min_height = 1.09
+
     action_penalty_weight = -1e-4
     joint_vel_penalty_weight = -1e-4

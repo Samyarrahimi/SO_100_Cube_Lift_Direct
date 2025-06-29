@@ -34,12 +34,10 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Store previous actions for observation
         #self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
         # Initialize camera and ResNet model
-        self._setup_model()
+        #self._setup_model()
 
         self.joint_pos = self.robot.data.joint_pos
         self.joint_vel = self.robot.data.joint_vel
-
-        self.joint_pos_init = self.robot.data.joint_pos.clone()
 
         self.target_poses = torch.zeros((self.num_envs, 3), device=self.device)
         self.target_poses[:, 0] = self.cfg.target_pos_x
@@ -74,20 +72,20 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         )
         return target_pos_b
 
-    def _get_camera_features_dimension(self) -> int:
-        """Calculate the dimension of camera features dynamically."""
-        try:
-            # Create a dummy input to get the output dimension
-            dummy_input = torch.randn(1, 3, 144, 256).to(self.device)
-            with torch.no_grad():
-                dummy_output = self.resnet_model(dummy_input)
-                features_dim = dummy_output.view(dummy_output.size(0), -1).size(1)
-            print(f"Camera features dimension: {features_dim}")
-            return features_dim
-        except Exception as e:
-            print(f"Error calculating camera features dimension: {e}")
-            # Fallback to default ResNet18 feature dimension
-            return 512
+    # def _get_camera_features_dimension(self) -> int:
+    #     """Calculate the dimension of camera features dynamically."""
+    #     try:
+    #         # Create a dummy input to get the output dimension
+    #         dummy_input = torch.randn(1, 3, 144, 256).to(self.device)
+    #         with torch.no_grad():
+    #             dummy_output = self.resnet_model(dummy_input)
+    #             features_dim = dummy_output.view(dummy_output.size(0), -1).size(1)
+    #         print(f"Camera features dimension: {features_dim}")
+    #         return features_dim
+    #     except Exception as e:
+    #         print(f"Error calculating camera features dimension: {e}")
+    #         # Fallback to default ResNet18 feature dimension
+    #         return 512
 
     def _setup_model(self):
         """Setup camera and ResNet model for feature extraction."""
@@ -99,35 +97,35 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.resnet_model.eval()
         self.resnet_model.to(self.device)
         # Calculate camera features dimension dynamically
-        self.camera_features_dim = self._get_camera_features_dimension()
+        self.camera_features_dim = 512  # self._get_camera_features_dimension()
 
-    def _get_camera_features(self) -> torch.Tensor:
-        """Extract ResNet18 features from camera RGB images."""
-        try:
-            # Get camera data
-            camera_data = self.camera.data.output
-            features = torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
-            if camera_data is None or "rgb" not in camera_data:
-                # Return zero features if camera data is not available
-                return features
-            # Shape: [num_envs, height, width, 3]
-            rgb_images = camera_data["rgb"]
-            for i in range(self.num_envs):
-                # Convert to tensor and normalize
-                img = rgb_images[i].float() / 255.0
-                img = img.permute(2, 0, 1)  # HWC to CHW
-                img = torch.unsqueeze(img, 0)  # Add batch dimension
-                # Extract features
-                with torch.no_grad():
-                    feature = self.resnet_model(img)
-                    # Flatten the feature tensor
-                    feature_flat = feature.view(feature.size(0), -1)
-                    features[i] = feature_flat.squeeze()
-            return features
-        except Exception as e:
-            print(f"Error extracting camera features: {e}")
-            # Return zero features on error
-            return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
+    # def _get_camera_features(self) -> torch.Tensor:
+    #     """Extract ResNet18 features from camera RGB images."""
+    #     try:
+    #         # Get camera data
+    #         camera_data = self.camera.data.output
+    #         features = torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
+    #         if camera_data is None or "rgb" not in camera_data:
+    #             # Return zero features if camera data is not available
+    #             return features
+    #         # Shape: [num_envs, height, width, 3]
+    #         rgb_images = camera_data["rgb"]
+    #         for i in range(self.num_envs):
+    #             # Convert to tensor and normalize
+    #             img = rgb_images[i].float() / 255.0
+    #             img = img.permute(2, 0, 1)  # HWC to CHW
+    #             img = torch.unsqueeze(img, 0)  # Add batch dimension
+    #             # Extract features
+    #             with torch.no_grad():
+    #                 feature = self.resnet_model(img)
+    #                 # Flatten the feature tensor
+    #                 feature_flat = feature.view(feature.size(0), -1)
+    #                 features[i] = feature_flat.squeeze()
+    #         return features
+    #     except Exception as e:
+    #         print(f"Error extracting camera features: {e}")
+    #         # Return zero features on error
+    #         return torch.zeros((self.num_envs, self.camera_features_dim), device=self.device)
 
     def _setup_scene(self):
         """Set up the simulation scene."""
@@ -140,7 +138,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Create cube marker
         self.cube_marker = FrameTransformer(self.cfg.cube_marker_cfg)
         # Create camera
-        self.camera = Camera(self.cfg.camera_cfg)
+        #self.camera = Camera(self.cfg.camera_cfg)
         # Create table
         table_cfg = self.cfg.table_cfg
         table_cfg.spawn.func(
@@ -172,6 +170,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         gripper_actions = self.actions[:, 5:6]
         gripper_targets = torch.where(gripper_actions > 0.5, 0.5, 0.0)
         self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
+        self.robot.write_data_to_sim()
         self.last_actions = self.actions.clone()
 
     def _get_observations(self) -> dict:
@@ -185,7 +184,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Target position in robot root frame
         target_pos_b = self._target_position_in_robot_root_frame()
         # Get camera RGB features
-        camera_features = self._get_camera_features()
+        # camera_features = self._get_camera_features()
         # Concatenate all observations
         states = torch.cat([
             joint_pos_rel,      # 6 dims
@@ -193,7 +192,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             object_pos_b,       # 3 dims
             target_pos_b,       # 3 dims
             self.last_actions,  # 6 dims
-            camera_features
+            # camera_features
         ], dim=-1)
         observations = {
             "policy": states
@@ -234,9 +233,9 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         """Compute rewards based on the manager-based environment reward structure."""
         # 1. Reaching object reward
-        reaching_reward = self._object_ee_distance(std=self.cfg.reaching_reward_std)
+        reaching_object = self._object_ee_distance(std=self.cfg.reaching_reward_std)
         # 2. Lifting object reward
-        lifting_reward = self._object_is_lifted(minimal_height=self.cfg.lifting_min_height)
+        lifting_object = self._object_is_lifted(minimal_height=self.cfg.lifting_min_height)
         # # 3. Object goal tracking reward (coarse)
         # object_goal_tracking_reward = self._object_goal_distance(
         #     minimal_height=self.cfg.goal_tracking_min_height, std=self.cfg.goal_tracking_std
@@ -250,14 +249,22 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         action_rate_penalty = self._action_rate_penalty(self.actions, self.last_actions)
         # 6. Joint velocity penalty
         joint_vel_penalty = self._joint_vel_penalty()
+        
+        if self.common_step_counter > 12000:
+            action_rate_penalty_weight = -5e-4
+            joint_vel_penalty_weight = -5e-4
+        else:
+            action_rate_penalty_weight = self.cfg.action_penalty_weight
+            joint_vel_penalty_weight = self.cfg.joint_vel_penalty_weight
+
         # Combine all rewards with weights
         total_reward = (
-            self.cfg.reaching_reward_weight * reaching_reward +
-            self.cfg.lifting_reward_weight * lifting_reward +
+            self.cfg.reaching_reward_weight * reaching_object +
+            self.cfg.lifting_reward_weight * lifting_object +
             # self.cfg.goal_tracking_weight * object_goal_tracking_reward +
             # self.cfg.goal_tracking_fine_weight * object_goal_tracking_fine_reward +
-            self.cfg.action_penalty_weight * action_rate_penalty +
-            self.cfg.joint_vel_penalty_weight * joint_vel_penalty
+            action_rate_penalty_weight * action_rate_penalty +
+            joint_vel_penalty_weight * joint_vel_penalty
         )
         return total_reward.unsqueeze(-1)
 
@@ -267,7 +274,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         # 2. Object dropping (root height below minimum)
         object_height = self.object.data.root_pos_w[:, 2]
-        object_dropping = object_height < 1.055
+        object_dropping = object_height < 1.0
         return object_dropping, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
