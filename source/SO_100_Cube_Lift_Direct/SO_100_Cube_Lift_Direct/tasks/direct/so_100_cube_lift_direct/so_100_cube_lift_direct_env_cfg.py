@@ -27,7 +27,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 5.0
     # - spaces definition
     action_space = 6
-    action_scale = 1
+    action_scale = 200
     observation_space = 24
     state_space = 0
 

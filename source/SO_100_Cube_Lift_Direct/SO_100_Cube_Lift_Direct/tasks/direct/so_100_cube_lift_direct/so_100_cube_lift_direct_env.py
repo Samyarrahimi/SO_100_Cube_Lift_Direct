@@ -172,10 +172,11 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         gripper_actions = self.actions[:, 5:6]
         gripper_targets = torch.where(gripper_actions > 0.5, 0.5, 0.0)
         self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
-        self.robot.write_data_to_sim()
         self.last_actions = self.actions.clone()
         if self.common_step_counter % 200==0:
             print(f"last actions: {self.last_actions}")
+        self.robot.write_data_to_sim()
+
 
     def _get_observations(self) -> dict:
         """Get observations for the policy."""
