@@ -159,10 +159,16 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
     
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         """Store actions before physics step."""
-        self.actions = self.action_scale * actions.clone()
+        self.actions = actions.clone()
+        self.actions[:, :5] = self.action_scale_robot * self.actions[:, :5]
+
+        binary_mask = self.actions[:, 5:6] < 0.0
+        self.actions[:, 5:6] = torch.where(binary_mask, 0.0, 0.5)
+        # print the actions
         if self.common_step_counter % 200==0:
             print(f"actions: {actions}")
             print(f"actions scaled: {self.actions}")
+
 
     def _apply_action(self) -> None:
         # apply arm actions
@@ -170,8 +176,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         self.robot.set_joint_position_target(arm_actions, joint_ids=self.dof_idx[:5])
         # apply gripper actions
         gripper_actions = self.actions[:, 5:6]
-        gripper_targets = torch.where(gripper_actions > 0.5, 0.5, 0.0)
-        self.robot.set_joint_position_target(gripper_targets, joint_ids=self.dof_idx[5:6])
+        self.robot.set_joint_position_target(gripper_actions, joint_ids=self.dof_idx[5:6])
         self.last_actions = self.actions.clone()
         if self.common_step_counter % 200==0:
             print(f"last actions: {self.last_actions}")
