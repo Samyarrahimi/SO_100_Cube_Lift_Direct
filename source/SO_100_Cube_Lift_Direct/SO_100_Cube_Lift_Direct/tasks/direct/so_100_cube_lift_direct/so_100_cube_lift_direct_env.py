@@ -162,15 +162,14 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         """Store actions before physics step."""
         self.actions = actions.clone()
-        self.actions[:, :5] = self.action_scale_robot * self.actions[:, :5]
-        self.actions[:, 0] = torch.clamp(self.actions[:, 0], min=-88, max=88)
-        self.actions[:, 1] = torch.clamp(self.actions[:, 1], min=-88, max=88)
-        self.actions[:, 2] = torch.clamp(self.actions[:, 2], min=-70, max=-5)
-        self.actions[:, 3] = torch.clamp(self.actions[:, 3], min=-5, max=5)
-        self.actions[:, 4] = torch.clamp(self.actions[:, 4], min=-88, max=88)
-
-        binary_mask = self.actions[:, 5:6] < 0.0
-        self.actions[:, 5:6] = torch.where(binary_mask, 0.0, 0.5)
+        self.actions[:, :6] = self.action_scale_robot * self.actions[:, :6]
+        self.actions[:, 5:6] = torch.clamp(self.actions[:, 5:6], min=0.0, max=0.5)
+        # print("gripper actions raw: ", self.actions[:, 5:6])
+        # print("gripper actions scaled: ", self.action_scale_robot * self.actions[:, 5:6])
+    
+        # binary_mask = self.actions[:, 5:6] < 0.0
+        # self.actions[:, 5:6] = torch.where(binary_mask, 0.0, 0.5)
+        # print("gripper actions masked: ", self.actions[:, 5:6])
 
         # if self.common_step_counter % 1000==0:
         #     print(f"arm actions: {self.actions[:, :]}")
@@ -179,11 +178,9 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
 
     def _apply_action(self) -> None:
         # apply arm actions
-        arm_actions = self.actions[:, :5]
-        self.robot.set_joint_position_target(arm_actions, joint_ids=self.dof_idx[:5])
+        self.robot.set_joint_position_target(self.actions[:, :5], joint_ids=self.dof_idx[:5])
         # apply gripper actions
-        gripper_actions = self.actions[:, 5:6]
-        self.robot.set_joint_position_target(gripper_actions, joint_ids=self.dof_idx[5:6])
+        self.robot.set_joint_position_target(self.actions[:, 5:6], joint_ids=self.dof_idx[5:6])
         self.last_actions = self.actions.clone()
         # if self.common_step_counter % 1000==0:
         #     print(f"last actions: {self.last_actions}")
@@ -226,7 +223,6 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         """Get object-end effector distance."""
         cube_pos_w = self.object.data.root_pos_w[:, :3]
         ee_w = self.ee_frame.data.target_pos_w[..., 0, :]
-        print(f"ee_w: {ee_w}")
         cube_ee_distance = torch.norm(cube_pos_w - ee_w, dim=1)
         return 1 - torch.tanh(cube_ee_distance / std)
 
