@@ -27,7 +27,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 5.0
     # - spaces definition
     action_space = 6
-    action_scale_robot = 0.5
+    action_scale_robot = 20
     
     observation_space = 24
     state_space = 0
@@ -109,7 +109,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     ee_frame_cfg = FrameTransformerCfg(
         prim_path="/World/envs/env_.*/Robot/Base",
         visualizer_cfg=marker_cfg,
-        debug_vis=False,  # disable visualization
+        debug_vis=True,  # disable visualization
         target_frames=[
             FrameTransformerCfg.FrameCfg(
                 # Original path in comments for reference
@@ -138,7 +138,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     cube_marker_cfg = FrameTransformerCfg(
         prim_path="/World/envs/env_.*/Object",
         visualizer_cfg=cube_marker_cfg,
-        debug_vis=False,  # disable visualization
+        debug_vis=True,  # disable visualization
         target_frames=[
             FrameTransformerCfg.FrameCfg(
                 prim_path="/World/envs/env_.*/Object",

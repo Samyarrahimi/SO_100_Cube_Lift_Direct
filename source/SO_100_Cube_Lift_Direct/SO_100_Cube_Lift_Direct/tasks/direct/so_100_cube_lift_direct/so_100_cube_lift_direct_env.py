@@ -32,16 +32,16 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Get joint indices for action mapping
         self.dof_idx, _ = self.robot.find_joints(self.cfg.dof_names)
         # Store previous actions for observation
-        #self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
+        self.last_actions = torch.zeros((self.num_envs, self.cfg.action_space), device=self.device)
         # Initialize camera and ResNet model
         #self._setup_model()
         
-        self.action_scale = self.cfg.action_scale
+        self.action_scale_robot = self.cfg.action_scale_robot
 
         self.target_poses = torch.zeros((self.num_envs, 3), device=self.device)
-        self.target_poses[:, 0] = self.cfg.target_pos_x
-        self.target_poses[:, 1] = self.cfg.target_pos_y
-        self.target_poses[:, 2] = self.cfg.target_pos_z
+        self.target_poses[:, 0] = self.cfg.target_pos_x + self.scene.env_origins[:, 0]
+        self.target_poses[:, 1] = self.cfg.target_pos_y + self.scene.env_origins[:, 1]
+        self.target_poses[:, 2] = self.cfg.target_pos_z + self.scene.env_origins[:, 2]
 
     def _joint_pos_rel(self) -> torch.Tensor:
         """Get joint positions relative to initial positions."""
@@ -150,6 +150,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Add articulations to scene (robot, object, table)
         self.scene.articulations["robot"] = self.robot
         self.scene.rigid_objects["object"] = self.object
+        self.scene.sensors["ee_frame"] = self.ee_frame
+        self.scene.sensors["cube_marker"] = self.cube_marker
         # Clone environments
         self.scene.clone_environments(copy_from_source=False)
 
@@ -161,13 +163,18 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         """Store actions before physics step."""
         self.actions = actions.clone()
         self.actions[:, :5] = self.action_scale_robot * self.actions[:, :5]
+        self.actions[:, 0] = torch.clamp(self.actions[:, 0], min=-88, max=88)
+        self.actions[:, 1] = torch.clamp(self.actions[:, 1], min=-88, max=88)
+        self.actions[:, 2] = torch.clamp(self.actions[:, 2], min=-70, max=-5)
+        self.actions[:, 3] = torch.clamp(self.actions[:, 3], min=-5, max=5)
+        self.actions[:, 4] = torch.clamp(self.actions[:, 4], min=-88, max=88)
 
         binary_mask = self.actions[:, 5:6] < 0.0
         self.actions[:, 5:6] = torch.where(binary_mask, 0.0, 0.5)
-        # print the actions
-        if self.common_step_counter % 200==0:
-            print(f"actions: {actions}")
-            print(f"actions scaled: {self.actions}")
+
+        # if self.common_step_counter % 1000==0:
+        #     print(f"arm actions: {self.actions[:, :]}")
+        #     #print(f"gripper actions: {self.actions[:, 5:6]}")
 
 
     def _apply_action(self) -> None:
@@ -178,9 +185,9 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         gripper_actions = self.actions[:, 5:6]
         self.robot.set_joint_position_target(gripper_actions, joint_ids=self.dof_idx[5:6])
         self.last_actions = self.actions.clone()
-        if self.common_step_counter % 200==0:
-            print(f"last actions: {self.last_actions}")
-        self.robot.write_data_to_sim()
+        # if self.common_step_counter % 1000==0:
+        #     print(f"last actions: {self.last_actions}")
+        #self.robot.write_data_to_sim()
 
 
     def _get_observations(self) -> dict:
@@ -194,7 +201,13 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         # Target position in robot root frame
         target_pos_b = self._target_position_in_robot_root_frame()
         # Get camera RGB features
-        # camera_features = self._get_camera_features()
+        # # camera_features = self._get_camera_features()
+        # if self.common_step_counter % 1000==0:
+        #     print(f"object_pos_b: {object_pos_b}")
+        #     print(f"target_pos_b: {target_pos_b}")
+        #     print(f"joint_pos_rel: {joint_pos_rel}")
+        #     print(f"joint_vel_rel: {joint_vel_rel}")
+        #     print(f"last_actions: {self.last_actions}")
         # Concatenate all observations
         states = torch.cat([
             joint_pos_rel,      # 6 dims
@@ -213,6 +226,7 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
         """Get object-end effector distance."""
         cube_pos_w = self.object.data.root_pos_w[:, :3]
         ee_w = self.ee_frame.data.target_pos_w[..., 0, :]
+        print(f"ee_w: {ee_w}")
         cube_ee_distance = torch.norm(cube_pos_w - ee_w, dim=1)
         return 1 - torch.tanh(cube_ee_distance / std)
 
@@ -276,8 +290,8 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
             action_rate_penalty_weight * action_rate_penalty +
             joint_vel_penalty_weight * joint_vel_penalty
         )
-        if self.common_step_counter % 200 == 0:
-            print(f"reward at step {self.common_step_counter} is {total_reward.unsqueeze(-1)}")
+        # if self.common_step_counter % 1000 == 0:
+        #     print(f"reward at step {self.common_step_counter} is {total_reward.unsqueeze(-1)}")
         return total_reward.unsqueeze(-1)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -325,4 +339,4 @@ class So100CubeLiftDirectEnv(DirectRLEnv):
 
         # self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
-        self.last_actions = torch.zeros((self.num_envs, 6), device=self.device)
+        self.last_actions[env_ids] = 0
