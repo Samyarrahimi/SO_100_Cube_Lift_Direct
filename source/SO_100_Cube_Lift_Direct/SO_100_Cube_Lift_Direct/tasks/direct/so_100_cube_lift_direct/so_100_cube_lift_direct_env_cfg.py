@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 import copy
 import dataclasses
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg, AssetBaseCfg
@@ -20,6 +23,10 @@ from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
 from .so_100_robot_cfg import SO100_CFG
 
 
+CAMERA_HEIGHT = 144
+CAMERA_WIDTH = 256
+
+
 @configclass
 class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     # env
@@ -28,9 +35,13 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     # - spaces definition
     action_space = 6
     action_scale_robot = 0.5
-    
-    observation_space = 536
     state_space = 0
+
+    observation_space = spaces.Dict({
+        "camera": spaces.Box(low=0.0, high=1.0, shape=(CAMERA_HEIGHT, CAMERA_WIDTH, 3), dtype=np.float32),
+        "proprioceptive": spaces.Box(low=float("-inf"), high=float("inf"), shape=(24,), dtype=np.float32),
+    })
+
 
     sim: SimulationCfg = SimulationCfg(
         dt=0.01,  # 100Hz
@@ -82,8 +93,8 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     camera_cfg: CameraCfg = CameraCfg(
         prim_path="/World/envs/env_.*/Robot/Wrist_Pitch_Roll/Gripper_Camera/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
         update_period=0.04,
-        height=144,
-        width=256,
+        height=CAMERA_HEIGHT,
+        width=CAMERA_WIDTH,
         data_types=["rgb"],
         offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(180.0, 0.0, 0.0, 0.0), convention="ros"),
         spawn=None
