@@ -120,7 +120,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     ee_frame_cfg = FrameTransformerCfg(
         prim_path="/World/envs/env_.*/Robot/Base",
         visualizer_cfg=marker_cfg,
-        debug_vis=True,  # disable visualization
+        debug_vis=False,  # disable visualization
         target_frames=[
             FrameTransformerCfg.FrameCfg(
                 # Original path in comments for reference
@@ -149,7 +149,7 @@ class So100CubeLiftDirectEnvCfg(DirectRLEnvCfg):
     cube_marker_cfg = FrameTransformerCfg(
         prim_path="/World/envs/env_.*/Object",
         visualizer_cfg=cube_marker_cfg,
-        debug_vis=True,  # disable visualization
+        debug_vis=False,  # disable visualization
         target_frames=[
             FrameTransformerCfg.FrameCfg(
                 prim_path="/World/envs/env_.*/Object",
